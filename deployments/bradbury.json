@@ -2,12 +2,12 @@
   "network": "testnet-bradbury",
   "chainId": 4221,
   "contract": "ArtifactCourt",
-  "address": "0x9AFEc9731370e4A14a48a450B8408b13f702489c",
-  "deploymentTransaction": "0x98ff08178a528f37d6c2305baf6d76e7cc02a78b143d959106d6424c00021d60",
+  "address": "0x2e6b043D7A204D9611D30fFeE3eb83E4EAbc24D2",
+  "deploymentTransaction": "0x5887dcded30d83c31b53dbff98fb2f564fa139ce4cbb70d517ec6b79fea7b2f8",
   "source": "contracts/artifact_court.py",
-  "sourceSha256": "627f3bd6ae0f166bb93c94bc4ba5e3f5cdff63022cf7caa9064edc30321800dd",
-  "deployedAt": "2026-09-01T10:16:27.2359785Z",
-  "status": "FINALIZED",
+  "sourceSha256": "2ec66c4b0c6d7b79bac7940123b83cfcd4e4402c82024d3d188e0f51bbca440d",
+  "deployedAt": "2026-09-01T10:37:34.4521661Z",
+  "status": "ACCEPTED",
   "consensusResult": "AGREE",
   "executionResult": "FINISHED_WITH_RETURN"
 }

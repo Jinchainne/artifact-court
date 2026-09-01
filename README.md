@@ -12,8 +12,8 @@ ArtifactCourt turns a software release candidate into an auditable on-chain case
 | --- | --- |
 | Application | [https://artifact-court.vercel.app](https://artifact-court.vercel.app) |
 | Network | GenLayer Bradbury testnet |
-| Contract | [`0x9AFE...489c`](https://explorer-bradbury.genlayer.com/address/0x9AFEc9731370e4A14a48a450B8408b13f702489c) |
-| Deployment transaction | [`0x98ff...1d60`](https://explorer-bradbury.genlayer.com/tx/0x98ff08178a528f37d6c2305baf6d76e7cc02a78b143d959106d6424c00021d60) |
+| Contract | [`0x2e6b...24D2`](https://explorer-bradbury.genlayer.com/address/0x2e6b043D7A204D9611D30fFeE3eb83E4EAbc24D2) |
+| Deployment transaction | [`0x5887...b2f8`](https://explorer-bradbury.genlayer.com/tx/0x5887dcded30d83c31b53dbff98fb2f564fa139ce4cbb70d517ec6b79fea7b2f8) |
 | Chain | `testnet-bradbury` |
 
 Bradbury GEN is faucet-issued test currency with no promised monetary value.
@@ -22,11 +22,12 @@ Bradbury GEN is faucet-issued test currency with no promised monetary value.
 
 A deterministic contract can compare hashes, enforce deadlines, and account for bonds, but it cannot determine whether an API migration, schema change, binary, or adapter actually satisfies prose compatibility constraints spread across public sources. ArtifactCourt uses GenLayer-native non-deterministic execution for that consequential decision:
 
-1. `gl.nondet.web.render(...)` independently re-fetches maintainer evidence, challenger evidence, and consumer constraints.
-2. Each side receives a separate 7,000-character budget; one party cannot crowd the other out of validator context.
-3. `gl.nondet.exec_prompt(...)` returns a strict compatibility verdict schema.
-4. `gl.vm.run_nondet_unsafe(...)` requires validators to independently reproduce the verdict and affected consumer.
-5. The agreed result changes contract state and settles matched bonds.
+1. `gl.nondet.web.get(...)` retrieves immutable artifact bytes and verifies their locked SHA-256 digests.
+2. `gl.nondet.web.render(...)` independently re-fetches maintainer evidence, challenger evidence, and consumer constraints.
+3. Each side receives a separate 7,000-character budget; one party cannot crowd the other out of validator context.
+4. `gl.nondet.exec_prompt(...)` returns a strict compatibility verdict schema.
+5. `gl.vm.run_nondet_unsafe(...)` requires validators to independently reproduce the verdict and affected consumer.
+6. The agreed result changes contract state and settles matched bonds.
 
 The React app calls the deployed contract through `genlayer-js`, waits for an `ACCEPTED` transaction receipt, and re-reads authoritative state after every write.
 
@@ -69,12 +70,15 @@ flowchart LR
 ## Contract invariants
 
 - **Immutable provenance:** revision URLs require a full 40-character Git commit; artifact URLs must contain the same revision.
+- **Verified artifact bytes:** validators fetch each canonical raw artifact and compare its observed SHA-256 with the locked declaration.
 - **Canonical evidence graph:** artifact declarations and sorted consumer constraints are committed to a SHA-256 graph digest.
 - **Consumer ownership:** each constraint is bound to the wallet that registered it.
+- **Independent constraints:** the maintainer cannot register or approve a consumer constraint for their own release.
 - **Symmetric exposure:** challenger bond must exactly equal the maintainer bond.
 - **Balanced context:** maintainer and challenger have independent evidence budgets.
 - **Fresh evidence:** validators fetch sources during adjudication and remediation verification.
 - **Fail-closed uncertainty:** required fetch failure produces `UNRESOLVED`, not a guessed winner.
+- **Fail-closed remediation:** unavailable remediation evidence preserves the conditional state and both bonds.
 - **Consumer-owned remediation:** only the affected consumer wallet can approve a conditional fix.
 - **Pull-safe finality:** terminal settlement zeroes stored liabilities before emitting transfers.
 - **Liveness:** unresolved or conditional cases refund both principals after a fixed timeout.

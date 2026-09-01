@@ -18,7 +18,7 @@ The frontend is intentionally untrusted. It formats transactions and presents st
 
 ## Evidence partitions
 
-Maintainer and challenger evidence each receive exactly 7,000 rendered characters. Constraints receive a separate 5,000-character pool distributed across registered consumers. Unused capacity from one party is never transferred to the other.
+Maintainer and challenger evidence each receive exactly 7,000 rendered characters. Constraints receive a separate 5,000-character pool distributed across registered consumers. Unused capacity from one party is never transferred to the other. Immutable artifacts are fetched separately as raw bytes and compared against their locked SHA-256 declarations before semantic adjudication begins.
 
 Validators invoke the same fetch-and-assess function independently. Agreement is required on both `verdict` and `affected_consumer_id`; prose reasoning must also be non-empty and bounded.
 
@@ -49,5 +49,4 @@ Bond values are set to zero and the case is marked settled before any external t
 
 ## Liveness and failure
 
-Transport failures, empty public pages, contradictory evidence, and insufficient constraint coverage fail closed. They do not create an incompatible verdict and do not reward either party. Adjudication remains retryable until the fixed resolution timeout, after which either bonded party can return both principals.
-
+Transport failures, empty public pages, oversized artifacts, contradictory evidence, and insufficient constraint coverage fail closed. They do not create an incompatible verdict and do not reward either party. A remediation fetch failure also preserves `CONDITIONAL` rather than treating unavailable evidence as a failed fix. Adjudication remains retryable until the fixed resolution timeout, after which either bonded party can return both principals.

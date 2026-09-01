@@ -36,7 +36,10 @@ def _load_contract():
         evm=types.SimpleNamespace(contract_interface=_Decorator()),
         public=types.SimpleNamespace(write=_Decorator(), view=_Decorator()),
         nondet=types.SimpleNamespace(
-            web=types.SimpleNamespace(render=lambda _url, mode="text": ""),
+            web=types.SimpleNamespace(
+                render=lambda _url, mode="text": "",
+                get=lambda _url: types.SimpleNamespace(status=200, body=b"artifact"),
+            ),
             exec_prompt=lambda _prompt, response_format="json": {},
         ),
         vm=types.SimpleNamespace(
@@ -163,6 +166,29 @@ class ArtifactCourtBehaviorTest(unittest.TestCase):
         self.assertEqual(maintainer_packet.split(":\n", 1)[1].count("M"), 7000)
         self.assertEqual(challenger_packet.split(":\n", 1)[1].count("C"), 7000)
 
+    def test_validators_fetch_artifact_bytes_and_compare_locked_digest(self):
+        body = b"export const apiVersion = '2.4';\n"
+        case = self.case()
+        case.artifacts[0].declared_digest = "sha256:" + __import__("hashlib").sha256(body).hexdigest()
+        self.module.gl.nondet.web.get = lambda _url: types.SimpleNamespace(status=200, body=body)
+
+        packet, available, matches = self.contract._fetch_artifacts(case)
+
+        self.assertTrue(available)
+        self.assertTrue(matches)
+        self.assertIn(case.artifacts[0].declared_digest, packet)
+        case.artifacts[0].declared_digest = "sha256:" + "0" * 64
+        _, available, matches = self.contract._fetch_artifacts(case)
+        self.assertTrue(available)
+        self.assertFalse(matches)
+
+    def test_artifact_transport_failure_is_unresolved_not_a_digest_mismatch(self):
+        case = self.case()
+        self.module.gl.nondet.web.get = lambda _url: types.SimpleNamespace(status=503, body=b"")
+        _, available, matches = self.contract._fetch_artifacts(case)
+        self.assertFalse(available)
+        self.assertTrue(matches)
+
     def test_challenger_bond_must_exactly_match_maintainer_bond(self):
         case = self.case(state=self.module.CaseState.LOCKED, challenger=self.module.ZERO_ADDRESS, challenger_bond=0)
         self.contract.cases[1] = case
@@ -214,6 +240,34 @@ class ArtifactCourtBehaviorTest(unittest.TestCase):
         self.module.gl.message.sender_address = self.consumer
         self.contract.approve_remediation(1)
         self.assertTrue(case.remediation_approved)
+
+    def test_maintainer_cannot_self_own_a_consumer_constraint(self):
+        case = self.case(state=self.module.CaseState.DRAFT, dependencies=[])
+        self.contract.cases[1] = case
+        self.module.gl.message.sender_address = self.maintainer
+        with self.assertRaisesRegex(RuntimeError, "cannot own"):
+            self.contract.register_consumer(1, "self-client", "https://consumer.example/constraint")
+
+    def test_remediation_fetch_failure_keeps_bonds_and_conditional_state(self):
+        case = self.case(
+            state=self.module.CaseState.CONDITIONAL,
+            affected_consumer_id="wallet-client",
+            remediation_required="Publish a compatibility adapter for the affected consumer.",
+            remediation_url="https://maintainer.example/adapter",
+            remediation_approved=True,
+        )
+        self.contract.cases[1] = case
+        self.module._now = lambda: 250
+        self.module.gl.nondet.web.render = lambda _url, mode="text": (_ for _ in ()).throw(RuntimeError("offline"))
+        transfers = []
+        self.contract._transfer = lambda recipient, amount: transfers.append((recipient, amount))
+
+        outcome = self.contract.verify_remediation(1)
+
+        self.assertEqual(outcome, "UNRESOLVED")
+        self.assertEqual(case.state, self.module.CaseState.CONDITIONAL)
+        self.assertFalse(case.settled)
+        self.assertEqual(transfers, [])
 
     def test_unresolved_case_refunds_both_bonds_after_timeout(self):
         case = self.case(state=self.module.CaseState.UNRESOLVED)

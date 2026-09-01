@@ -9,6 +9,7 @@ const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
 test("contract uses consequential non-deterministic consensus", () => {
   for (const signal of [
     "gl.nondet.web.render",
+    "gl.nondet.web.get",
     "gl.nondet.exec_prompt",
     "gl.vm.run_nondet_unsafe",
     "validator_fn",
@@ -35,5 +36,7 @@ test("security invariants remain visible in source", () => {
   assert.ok(contract.includes("Challenger bond must exactly match the maintainer bond"));
   assert.ok(contract.includes("SIDE_EVIDENCE_BUDGET"));
   assert.ok(contract.includes("Only the affected consumer owner may approve remediation"));
+  assert.ok(contract.includes("Maintainer cannot own a consumer compatibility constraint"));
+  assert.ok(contract.includes('"outcome": "UNRESOLVED"'));
   assert.ok(contract.includes("Resolution timed out; use the refund path"));
 });
