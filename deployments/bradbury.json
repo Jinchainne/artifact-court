@@ -1,0 +1,13 @@
+{
+  "network": "testnet-bradbury",
+  "chainId": 4221,
+  "contract": "ArtifactCourt",
+  "address": "0x9AFEc9731370e4A14a48a450B8408b13f702489c",
+  "deploymentTransaction": "0x98ff08178a528f37d6c2305baf6d76e7cc02a78b143d959106d6424c00021d60",
+  "source": "contracts/artifact_court.py",
+  "sourceSha256": "627f3bd6ae0f166bb93c94bc4ba5e3f5cdff63022cf7caa9064edc30321800dd",
+  "deployedAt": "2026-09-01T10:16:27.2359785Z",
+  "status": "FINALIZED",
+  "consensusResult": "AGREE",
+  "executionResult": "FINISHED_WITH_RETURN"
+}

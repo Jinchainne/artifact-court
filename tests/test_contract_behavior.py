@@ -1,0 +1,232 @@
+import importlib.util
+import pathlib
+import sys
+import types
+import unittest
+
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+CONTRACT_PATH = ROOT / "contracts" / "artifact_court.py"
+
+
+class _Decorator:
+    def __call__(self, value):
+        return value
+
+    @property
+    def payable(self):
+        return self
+
+
+class _GenericList(list):
+    @classmethod
+    def __class_getitem__(cls, _item):
+        return cls
+
+
+class _GenericMap(dict):
+    @classmethod
+    def __class_getitem__(cls, _item):
+        return cls
+
+
+def _load_contract():
+    gl = types.SimpleNamespace(
+        Contract=object,
+        evm=types.SimpleNamespace(contract_interface=_Decorator()),
+        public=types.SimpleNamespace(write=_Decorator(), view=_Decorator()),
+        nondet=types.SimpleNamespace(
+            web=types.SimpleNamespace(render=lambda _url, mode="text": ""),
+            exec_prompt=lambda _prompt, response_format="json": {},
+        ),
+        vm=types.SimpleNamespace(
+            UserError=RuntimeError,
+            Result=object,
+            Return=type("Return", (), {}),
+            run_nondet_unsafe=lambda leader, _validator: leader(),
+        ),
+        message_raw={"datetime": "2026-09-01T00:00:00Z"},
+        message=types.SimpleNamespace(sender_address="0x" + "1" * 40, value=0),
+    )
+    module_stub = types.ModuleType("genlayer")
+    module_stub.gl = gl
+    module_stub.allow_storage = _Decorator()
+    module_stub.u256 = int
+    module_stub.Address = str
+    module_stub.DynArray = _GenericList
+    module_stub.TreeMap = _GenericMap
+    previous = sys.modules.get("genlayer")
+    sys.modules["genlayer"] = module_stub
+    try:
+        spec = importlib.util.spec_from_file_location("artifact_court_behavior", CONTRACT_PATH)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    finally:
+        if previous is None:
+            del sys.modules["genlayer"]
+        else:
+            sys.modules["genlayer"] = previous
+
+
+class ArtifactCourtBehaviorTest(unittest.TestCase):
+    def setUp(self):
+        self.module = _load_contract()
+        self.contract = object.__new__(self.module.ArtifactCourt)
+        self.contract.cases = {}
+        self.maintainer = "0x" + "1" * 40
+        self.challenger = "0x" + "2" * 40
+        self.consumer = "0x" + "3" * 40
+
+    def case(self, **overrides):
+        values = {
+            "id": 1,
+            "maintainer": self.maintainer,
+            "challenger": self.challenger,
+            "title": "Gateway release",
+            "revision_url": "https://github.com/acme/gateway/commit/" + "a" * 40,
+            "revision": "a" * 40,
+            "release_notes": "A bounded release candidate with explicit API guarantees.",
+            "maintainer_bond": 100,
+            "challenger_bond": 100,
+            "artifacts": [
+                types.SimpleNamespace(
+                    kind="SOURCE",
+                    immutable_url="https://github.com/acme/gateway/blob/" + "a" * 40 + "/src/api.ts",
+                    declared_digest="sha256:" + "b" * 64,
+                )
+            ],
+            "dependencies": [
+                types.SimpleNamespace(
+                    consumer_id="wallet-client",
+                    owner=self.consumer,
+                    constraint_url="https://consumer.example/constraint",
+                )
+            ],
+            "maintainer_evidence": ["https://maintainer.example/release"],
+            "challenger_evidence": ["https://challenger.example/regression"],
+            "state": self.module.CaseState.CHALLENGED,
+            "graph_digest": "sha256:" + "c" * 64,
+            "verdict": "",
+            "reasoning": "",
+            "affected_consumer_id": "",
+            "remediation_required": "",
+            "remediation_url": "",
+            "remediation_approved": False,
+            "challenge_deadline": 100,
+            "evidence_deadline": 200,
+            "resolution_timeout": 300,
+            "settled": False,
+        }
+        values.update(overrides)
+        return types.SimpleNamespace(**values)
+
+    def test_revision_and_artifacts_are_bound_to_full_commit(self):
+        with self.assertRaisesRegex(RuntimeError, "40-character commit"):
+            self.module._immutable_revision_url("https://github.com/acme/gateway/commit/main")
+        url, revision = self.module._immutable_revision_url(
+            "https://github.com/acme/gateway/commit/" + "a" * 40
+        )
+        self.assertEqual(revision, "a" * 40)
+        self.assertIn(revision, url)
+        with self.assertRaisesRegex(RuntimeError, "case revision"):
+            self.module._immutable_artifact_url(
+                "https://github.com/acme/gateway/blob/" + "d" * 40 + "/src/api.ts",
+                revision,
+            )
+
+    def test_graph_digest_is_stable_across_consumer_registration_order(self):
+        first = self.case()
+        second_dependency = types.SimpleNamespace(
+            consumer_id="api-indexer",
+            owner="0x" + "4" * 40,
+            constraint_url="https://indexer.example/constraint",
+        )
+        first.dependencies = [first.dependencies[0], second_dependency]
+        second = self.case()
+        second.dependencies = [second_dependency, second.dependencies[0]]
+        self.assertEqual(self.module._canonical_graph(first), self.module._canonical_graph(second))
+
+    def test_each_party_keeps_an_independent_evidence_budget(self):
+        bodies = {
+            "https://maintainer.example/release": "M" * 20_000,
+            "https://challenger.example/regression": "C" * 20_000,
+        }
+        self.module.gl.nondet.web.render = lambda url, mode="text": bodies[url]
+        maintainer_packet, maintainer_available = self.contract._fetch_urls(
+            "MAINTAINER", ["https://maintainer.example/release"], self.module.SIDE_EVIDENCE_BUDGET
+        )
+        challenger_packet, challenger_available = self.contract._fetch_urls(
+            "CHALLENGER", ["https://challenger.example/regression"], self.module.SIDE_EVIDENCE_BUDGET
+        )
+        self.assertTrue(maintainer_available and challenger_available)
+        self.assertEqual(maintainer_packet.split(":\n", 1)[1].count("M"), 7000)
+        self.assertEqual(challenger_packet.split(":\n", 1)[1].count("C"), 7000)
+
+    def test_challenger_bond_must_exactly_match_maintainer_bond(self):
+        case = self.case(state=self.module.CaseState.LOCKED, challenger=self.module.ZERO_ADDRESS, challenger_bond=0)
+        self.contract.cases[1] = case
+        self.module._now = lambda: 50
+        self.module.gl.message.sender_address = self.challenger
+        self.module.gl.message.value = 1
+        with self.assertRaisesRegex(RuntimeError, "exactly match"):
+            self.contract.open_challenge(1)
+        self.module.gl.message.value = 100
+        self.contract.open_challenge(1)
+        self.assertEqual(case.state, self.module.CaseState.CHALLENGED)
+        self.assertEqual(case.challenger_bond, 100)
+
+    def test_compatible_and_incompatible_verdicts_control_bond_settlement(self):
+        for verdict, winner, expected_state in (
+            ("COMPATIBLE", self.maintainer, self.module.CaseState.ACTIVATED),
+            ("INCOMPATIBLE", self.challenger, self.module.CaseState.REJECTED),
+        ):
+            case = self.case()
+            self.contract.cases[1] = case
+            transfers = []
+            self.contract._transfer = lambda recipient, amount: transfers.append((recipient, amount)) if amount > 0 else None
+            self.contract._apply_verdict(
+                case,
+                {"verdict": verdict, "affected_consumer_id": "", "reasoning": "Evidence establishes the terminal result.", "remediation": ""},
+            )
+            self.assertEqual(case.state, expected_state)
+            self.assertEqual(transfers, [(winner, 200)])
+            self.assertTrue(case.settled)
+
+    def test_conditional_verdict_preserves_bonds_and_consumer_owns_approval(self):
+        case = self.case()
+        self.contract.cases[1] = case
+        self.contract._apply_verdict(
+            case,
+            {
+                "verdict": "CONDITIONAL",
+                "affected_consumer_id": "wallet-client",
+                "reasoning": "The client requires a migration adapter before activation.",
+                "remediation": "Publish and bind the compatibility adapter.",
+            },
+        )
+        self.assertEqual(case.state, self.module.CaseState.CONDITIONAL)
+        self.assertFalse(case.settled)
+        case.remediation_url = "https://maintainer.example/adapter"
+        self.module.gl.message.sender_address = self.challenger
+        with self.assertRaisesRegex(RuntimeError, "affected consumer owner"):
+            self.contract.approve_remediation(1)
+        self.module.gl.message.sender_address = self.consumer
+        self.contract.approve_remediation(1)
+        self.assertTrue(case.remediation_approved)
+
+    def test_unresolved_case_refunds_both_bonds_after_timeout(self):
+        case = self.case(state=self.module.CaseState.UNRESOLVED)
+        self.contract.cases[1] = case
+        self.module._now = lambda: 301
+        self.module.gl.message.sender_address = self.maintainer
+        transfers = []
+        self.contract._transfer = lambda recipient, amount: transfers.append((recipient, amount))
+        self.contract.refund_timed_out(1)
+        self.assertEqual(transfers, [(self.maintainer, 100), (self.challenger, 100)])
+        self.assertEqual(case.state, self.module.CaseState.REFUNDED)
+        self.assertTrue(case.settled)
+
+
+if __name__ == "__main__":
+    unittest.main()
