@@ -10,7 +10,7 @@ ArtifactCourt turns a software release candidate into an auditable on-chain case
 
 | Surface | Value |
 | --- | --- |
-| Application | Deployment pending |
+| Application | [https://artifact-court.vercel.app](https://artifact-court.vercel.app) |
 | Network | GenLayer Bradbury testnet |
 | Contract | [`0x9AFE...489c`](https://explorer-bradbury.genlayer.com/address/0x9AFEc9731370e4A14a48a450B8408b13f702489c) |
 | Deployment transaction | [`0x98ff...1d60`](https://explorer-bradbury.genlayer.com/tx/0x98ff08178a528f37d6c2305baf6d76e7cc02a78b143d959106d6424c00021d60) |
