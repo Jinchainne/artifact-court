@@ -18,9 +18,9 @@ The frontend is intentionally untrusted. It formats transactions and presents st
 
 ## Evidence partitions
 
-Maintainer and challenger evidence each receive exactly 7,000 rendered characters. Constraints receive a separate 5,000-character pool distributed across registered consumers. Unused capacity from one party is never transferred to the other. Immutable artifacts are fetched separately as raw bytes and compared against their locked SHA-256 declarations before semantic adjudication begins.
+Maintainer and challenger evidence each receive exactly 7,000 rendered characters. Every evidence item carries a declared SHA-256 content digest; validators verify fetched bytes match each declared digest and fail closed on any mismatch. Constraints receive a separate 5,000-character pool distributed across registered consumers. Unused capacity from one party is never transferred to the other. Immutable artifacts are fetched separately as raw bytes and compared against their locked SHA-256 declarations before semantic adjudication begins.
 
-Validators invoke the same fetch-and-assess function independently. Agreement is required on both `verdict` and `affected_consumer_id`; prose reasoning must also be non-empty and bounded.
+Validators invoke the same fetch-and-assess function independently. Agreement is required on both `verdict` and `affected_consumer_id`; prose reasoning must also be non-empty and bounded. Before conditional settlement can proceed, validators independently reproduce the exact remediation requirement from content-bound evidence and confirm it matches the stored value.
 
 ## Verdict schema
 
@@ -49,4 +49,4 @@ Bond values are set to zero and the case is marked settled before any external t
 
 ## Liveness and failure
 
-Transport failures, empty public pages, oversized artifacts, contradictory evidence, and insufficient constraint coverage fail closed. They do not create an incompatible verdict and do not reward either party. A remediation fetch failure also preserves `CONDITIONAL` rather than treating unavailable evidence as a failed fix. Adjudication remains retryable until the fixed resolution timeout, after which either bonded party can return both principals.
+Transport failures, empty public pages, oversized artifacts, contradictory evidence, evidence digest mismatches, and insufficient constraint coverage fail closed. They do not create an incompatible verdict and do not reward either party. A remediation fetch failure also preserves `CONDITIONAL` rather than treating unavailable evidence as a failed fix. A remediation requirement reproduction mismatch (where validators derive a different requirement from the content-bound evidence) also preserves `CONDITIONAL`. Adjudication remains retryable until the fixed resolution timeout, after which either bonded party can return both principals.

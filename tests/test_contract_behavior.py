@@ -17,18 +17,15 @@ class _Decorator:
     def payable(self):
         return self
 
-
 class _GenericList(list):
     @classmethod
     def __class_getitem__(cls, _item):
         return cls
 
-
 class _GenericMap(dict):
     @classmethod
     def __class_getitem__(cls, _item):
         return cls
-
 
 def _load_contract():
     gl = types.SimpleNamespace(
@@ -81,7 +78,14 @@ class ArtifactCourtBehaviorTest(unittest.TestCase):
         self.challenger = "0x" + "2" * 40
         self.consumer = "0x" + "3" * 40
 
+    def _evidence_item(self, url, body=b"evidence content"):
+        """Helper to create an EvidenceItem with a matching digest."""
+        digest = "sha256:" + __import__("hashlib").sha256(body).hexdigest()
+        return types.SimpleNamespace(url=url, declared_digest=digest)
+
     def case(self, **overrides):
+        ev_body_m = b"maintainer evidence body"
+        ev_body_c = b"challenger evidence body"
         values = {
             "id": 1,
             "maintainer": self.maintainer,
@@ -106,8 +110,12 @@ class ArtifactCourtBehaviorTest(unittest.TestCase):
                     constraint_url="https://consumer.example/constraint",
                 )
             ],
-            "maintainer_evidence": ["https://maintainer.example/release"],
-            "challenger_evidence": ["https://challenger.example/regression"],
+            "maintainer_evidence": [
+                self._evidence_item("https://maintainer.example/release", ev_body_m)
+            ],
+            "challenger_evidence": [
+                self._evidence_item("https://challenger.example/regression", ev_body_c)
+            ],
             "state": self.module.CaseState.CHALLENGED,
             "graph_digest": "sha256:" + "c" * 64,
             "verdict": "",
@@ -150,17 +158,87 @@ class ArtifactCourtBehaviorTest(unittest.TestCase):
         second.dependencies = [second_dependency, second.dependencies[0]]
         self.assertEqual(self.module._canonical_graph(first), self.module._canonical_graph(second))
 
-    def test_each_party_keeps_an_independent_evidence_budget(self):
+    def test_evidence_items_are_bound_to_content_digests(self):
+        """Evidence items must carry a declared SHA-256 digest that validators verify."""
+        body = b"immutable evidence content"
+        digest = "sha256:" + __import__("hashlib").sha256(body).hexdigest()
+        item = self.module.EvidenceItem("https://example.com/evidence", digest)
+        self.assertEqual(item.url, "https://example.com/evidence")
+        self.assertEqual(item.declared_digest, digest)
+
+    def test_fetch_urls_verifies_content_digests(self):
+        """_fetch_urls must verify fetched content matches declared evidence digests."""
+        body_a = b"first evidence piece"
+        body_b = b"second evidence piece"
+        digest_a = "sha256:" + __import__("hashlib").sha256(body_a).hexdigest()
+        digest_b = "sha256:" + __import__("hashlib").sha256(body_b).hexdigest()
+
+        items = [
+            types.SimpleNamespace(url="https://example.com/a", declared_digest=digest_a),
+            types.SimpleNamespace(url="https://example.com/b", declared_digest=digest_b),
+        ]
+
         bodies = {
-            "https://maintainer.example/release": "M" * 20_000,
-            "https://challenger.example/regression": "C" * 20_000,
+            "https://example.com/a": body_a,
+            "https://example.com/b": body_b,
         }
-        self.module.gl.nondet.web.render = lambda url, mode="text": bodies[url]
-        maintainer_packet, maintainer_available = self.contract._fetch_urls(
-            "MAINTAINER", ["https://maintainer.example/release"], self.module.SIDE_EVIDENCE_BUDGET
+        self.module.gl.nondet.web.get = lambda url: types.SimpleNamespace(status=200, body=bodies[url])
+
+        text, available, digests_match = self.contract._fetch_urls("TEST", items, 7000)
+
+        self.assertTrue(available)
+        self.assertTrue(digests_match)
+        self.assertIn(digest_a, text)
+        self.assertIn(digest_b, text)
+
+    def test_fetch_urls_fails_closed_on_digest_mismatch(self):
+        """Evidence with a wrong declared digest must report digests_match=False."""
+        body = b"actual content"
+        wrong_digest = "sha256:" + "0" * 64
+
+        items = [
+            types.SimpleNamespace(url="https://example.com/evidence", declared_digest=wrong_digest),
+        ]
+
+        self.module.gl.nondet.web.get = lambda url: types.SimpleNamespace(status=200, body=body)
+
+        text, available, digests_match = self.contract._fetch_urls("TEST", items, 7000)
+
+        self.assertTrue(available)
+        self.assertFalse(digests_match)
+
+    def test_fetch_urls_handles_unavailable_evidence(self):
+        """Unavailable evidence must report available=False."""
+        items = [
+            types.SimpleNamespace(url="https://example.com/down", declared_digest="sha256:" + "a" * 64),
+        ]
+
+        self.module.gl.nondet.web.get = lambda url: types.SimpleNamespace(status=503, body=b"")
+
+        text, available, digests_match = self.contract._fetch_urls("TEST", items, 7000)
+
+        self.assertFalse(available)
+        self.assertTrue(digests_match)  # no content to compare, so no mismatch
+
+    def test_each_party_keeps_an_independent_evidence_budget(self):
+        body_m = b"M" * 20_000
+        body_c = b"C" * 20_000
+        digest_m = "sha256:" + __import__("hashlib").sha256(body_m).hexdigest()
+        digest_c = "sha256:" + __import__("hashlib").sha256(body_c).hexdigest()
+
+        items_m = [types.SimpleNamespace(url="https://maintainer.example/release", declared_digest=digest_m)]
+        items_c = [types.SimpleNamespace(url="https://challenger.example/regression", declared_digest=digest_c)]
+
+        self.module.gl.nondet.web.get = lambda url: types.SimpleNamespace(
+            status=200,
+            body=body_m if "maintainer" in url else body_c,
         )
-        challenger_packet, challenger_available = self.contract._fetch_urls(
-            "CHALLENGER", ["https://challenger.example/regression"], self.module.SIDE_EVIDENCE_BUDGET
+
+        maintainer_packet, maintainer_available, _ = self.contract._fetch_urls(
+            "MAINTAINER", items_m, self.module.SIDE_EVIDENCE_BUDGET
+        )
+        challenger_packet, challenger_available, _ = self.contract._fetch_urls(
+            "CHALLENGER", items_c, self.module.SIDE_EVIDENCE_BUDGET
         )
         self.assertTrue(maintainer_available and challenger_available)
         self.assertEqual(maintainer_packet.split(":\n", 1)[1].count("M"), 7000)
@@ -258,6 +336,17 @@ class ArtifactCourtBehaviorTest(unittest.TestCase):
         )
         self.contract.cases[1] = case
         self.module._now = lambda: 250
+
+        # Mock _reproduce_remediation_requirement to return matching result
+        def mock_reproduce(c):
+            return {
+                "verdict": "CONDITIONAL",
+                "affected_consumer_id": "wallet-client",
+                "reasoning": "Reproduced successfully.",
+                "remediation": "Publish a compatibility adapter for the affected consumer.",
+            }
+        self.contract._reproduce_remediation_requirement = mock_reproduce
+
         self.module.gl.nondet.web.render = lambda _url, mode="text": (_ for _ in ()).throw(RuntimeError("offline"))
         transfers = []
         self.contract._transfer = lambda recipient, amount: transfers.append((recipient, amount))
@@ -268,6 +357,125 @@ class ArtifactCourtBehaviorTest(unittest.TestCase):
         self.assertEqual(case.state, self.module.CaseState.CONDITIONAL)
         self.assertFalse(case.settled)
         self.assertEqual(transfers, [])
+
+    def test_remediation_reproduction_mismatch_blocks_settlement(self):
+        """If the reproduced remediation requirement does not match the stored one, settlement is blocked."""
+        case = self.case(
+            state=self.module.CaseState.CONDITIONAL,
+            affected_consumer_id="wallet-client",
+            remediation_required="Publish a compatibility adapter for the affected consumer.",
+            remediation_url="https://maintainer.example/adapter",
+            remediation_approved=True,
+        )
+        self.contract.cases[1] = case
+        self.module._now = lambda: 250
+
+        # Mock _reproduce_remediation_requirement to return a DIFFERENT remediation
+        def mock_reproduce(c):
+            return {
+                "verdict": "CONDITIONAL",
+                "affected_consumer_id": "wallet-client",
+                "reasoning": "Different reasoning.",
+                "remediation": "A completely different remediation action.",
+            }
+        self.contract._reproduce_remediation_requirement = mock_reproduce
+
+        transfers = []
+        self.contract._transfer = lambda recipient, amount: transfers.append((recipient, amount))
+
+        outcome = self.contract.verify_remediation(1)
+
+        self.assertEqual(outcome, "UNRESOLVED")
+        self.assertEqual(case.state, self.module.CaseState.CONDITIONAL)
+        self.assertFalse(case.settled)
+        self.assertEqual(transfers, [])
+        self.assertIn("does not match", case.reasoning)
+
+    def test_remediation_reproduction_verdict_change_blocks_settlement(self):
+        """If the reproduced verdict is no longer CONDITIONAL, settlement is blocked."""
+        case = self.case(
+            state=self.module.CaseState.CONDITIONAL,
+            affected_consumer_id="wallet-client",
+            remediation_required="Publish a compatibility adapter.",
+            remediation_url="https://maintainer.example/adapter",
+            remediation_approved=True,
+        )
+        self.contract.cases[1] = case
+        self.module._now = lambda: 250
+
+        # Mock reproduction returning INCOMPATIBLE instead of CONDITIONAL
+        def mock_reproduce(c):
+            return {
+                "verdict": "INCOMPATIBLE",
+                "affected_consumer_id": "",
+                "reasoning": "Evidence now shows incompatibility.",
+                "remediation": "",
+            }
+        self.contract._reproduce_remediation_requirement = mock_reproduce
+
+        transfers = []
+        self.contract._transfer = lambda recipient, amount: transfers.append((recipient, amount))
+
+        outcome = self.contract.verify_remediation(1)
+
+        self.assertEqual(outcome, "UNRESOLVED")
+        self.assertEqual(case.state, self.module.CaseState.CONDITIONAL)
+        self.assertFalse(case.settled)
+
+    def test_remediation_reproduction_consumer_change_blocks_settlement(self):
+        """If the reproduced affected consumer differs, settlement is blocked."""
+        case = self.case(
+            state=self.module.CaseState.CONDITIONAL,
+            affected_consumer_id="wallet-client",
+            remediation_required="Publish a compatibility adapter.",
+            remediation_url="https://maintainer.example/adapter",
+            remediation_approved=True,
+        )
+        self.contract.cases[1] = case
+        self.module._now = lambda: 250
+
+        # Mock reproduction returning different consumer
+        def mock_reproduce(c):
+            return {
+                "verdict": "CONDITIONAL",
+                "affected_consumer_id": "api-indexer",
+                "reasoning": "Different consumer affected.",
+                "remediation": "Publish a compatibility adapter.",
+            }
+        self.contract._reproduce_remediation_requirement = mock_reproduce
+
+        transfers = []
+        self.contract._transfer = lambda recipient, amount: transfers.append((recipient, amount))
+
+        outcome = self.contract.verify_remediation(1)
+
+        self.assertEqual(outcome, "UNRESOLVED")
+        self.assertEqual(case.state, self.module.CaseState.CONDITIONAL)
+        self.assertFalse(case.settled)
+        self.assertIn("different affected consumer", case.reasoning)
+
+    def test_submit_evidence_requires_matching_digests(self):
+        """submit_evidence must accept parallel URL and digest arrays."""
+        case = self.case(state=self.module.CaseState.CHALLENGED)
+        self.contract.cases[1] = case
+        self.module._now = lambda: 150
+        self.module.gl.message.sender_address = self.maintainer
+
+        # Mismatched lengths should fail
+        with self.assertRaisesRegex(RuntimeError, "corresponding content digest"):
+            self.contract.submit_evidence(1, ["https://example.com/e1"], ["sha256:" + "a" * 64, "sha256:" + "b" * 64])
+
+        # Matching lengths should succeed
+        self.contract.submit_evidence(
+            1,
+            ["https://example.com/e1", "https://example.com/e2"],
+            ["sha256:" + "a" * 64, "sha256:" + "b" * 64],
+        )
+        self.assertEqual(len(case.maintainer_evidence), 2)
+        self.assertEqual(case.maintainer_evidence[0].url, "https://example.com/e1")
+        self.assertEqual(case.maintainer_evidence[0].declared_digest, "sha256:" + "a" * 64)
+        self.assertEqual(case.maintainer_evidence[1].url, "https://example.com/e2")
+        self.assertEqual(case.maintainer_evidence[1].declared_digest, "sha256:" + "b" * 64)
 
     def test_unresolved_case_refunds_both_bonds_after_timeout(self):
         case = self.case(state=self.module.CaseState.UNRESOLVED)

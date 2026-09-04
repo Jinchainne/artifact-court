@@ -2,7 +2,7 @@
 
 **Consensus-backed release integrity, compatibility adjudication, and bonded remediation on GenLayer.**
 
-ArtifactCourt turns a software release candidate into an auditable on-chain case. A maintainer binds a full Git commit, immutable artifact URLs, declared SHA-256 digests, and consumer-owned compatibility constraints. A challenger can match the maintainer's bond and submit counter-evidence. GenLayer validators then re-fetch every evidence partition and produce a verdict that directly controls activation, remediation ownership, rejection, or refunds.
+ArtifactCourt turns a software release candidate into an auditable on-chain case. A maintainer binds a full Git commit, immutable artifact URLs, declared SHA-256 digests, and consumer-owned compatibility constraints. Every evidence item submitted by either party carries a content-bound SHA-256 digest that validators verify against fetched bytes. A challenger can match the maintainer's bond and submit counter-evidence. GenLayer validators then re-fetch every evidence partition, verify content integrity, and produce a verdict that directly controls activation, remediation ownership, rejection, or refunds. Before conditional settlement can proceed, validators independently reproduce the exact remediation requirement from the content-bound evidence.
 
 > ArtifactCourt does not claim that software is bug-free. It decides whether one exact release revision satisfies one exact locked dependency graph under public evidence available at adjudication time.
 
@@ -23,11 +23,13 @@ Bradbury GEN is faucet-issued test currency with no promised monetary value.
 A deterministic contract can compare hashes, enforce deadlines, and account for bonds, but it cannot determine whether an API migration, schema change, binary, or adapter actually satisfies prose compatibility constraints spread across public sources. ArtifactCourt uses GenLayer-native non-deterministic execution for that consequential decision:
 
 1. `gl.nondet.web.get(...)` retrieves immutable artifact bytes and verifies their locked SHA-256 digests.
-2. `gl.nondet.web.render(...)` independently re-fetches maintainer evidence, challenger evidence, and consumer constraints.
-3. Each side receives a separate 7,000-character budget; one party cannot crowd the other out of validator context.
-4. `gl.nondet.exec_prompt(...)` returns a strict compatibility verdict schema.
-5. `gl.vm.run_nondet_unsafe(...)` requires validators to independently reproduce the verdict and affected consumer.
-6. The agreed result changes contract state and settles matched bonds.
+2. `gl.nondet.web.get(...)` independently re-fetches maintainer and challenger evidence, verifying each item's content-bound SHA-256 digest against fetched bytes.
+3. `gl.nondet.web.render(...)` independently re-fetches consumer constraints.
+4. Each side receives a separate 7,000-character budget; one party cannot crowd the other out of validator context.
+5. `gl.nondet.exec_prompt(...)` returns a strict compatibility verdict schema.
+6. `gl.vm.run_nondet_unsafe(...)` requires validators to independently reproduce the verdict and affected consumer.
+7. Before conditional settlement, validators reproduce the exact remediation requirement from content-bound evidence and confirm it matches the stored value.
+8. The agreed result changes contract state and settles matched bonds.
 
 The React app calls the deployed contract through `genlayer-js`, waits for an `ACCEPTED` transaction receipt, and re-reads authoritative state after every write.
 
@@ -75,10 +77,13 @@ flowchart LR
 - **Consumer ownership:** each constraint is bound to the wallet that registered it.
 - **Independent constraints:** the maintainer cannot register or approve a consumer constraint for their own release.
 - **Symmetric exposure:** challenger bond must exactly equal the maintainer bond.
+- **Content-bound evidence:** every party evidence item carries a declared SHA-256 digest; validators verify fetched bytes match and fail closed on any mismatch.
 - **Balanced context:** maintainer and challenger have independent evidence budgets.
 - **Fresh evidence:** validators fetch sources during adjudication and remediation verification.
 - **Fail-closed uncertainty:** required fetch failure produces `UNRESOLVED`, not a guessed winner.
+- **Fail-closed evidence integrity:** evidence digest mismatch produces `UNRESOLVED`, preventing tampered evidence from influencing the verdict.
 - **Fail-closed remediation:** unavailable remediation evidence preserves the conditional state and both bonds.
+- **Reproduced remediation requirement:** before conditional settlement, validators independently re-derive the exact remediation requirement from content-bound evidence and confirm it matches the stored value.
 - **Consumer-owned remediation:** only the affected consumer wallet can approve a conditional fix.
 - **Pull-safe finality:** terminal settlement zeroes stored liabilities before emitting transfers.
 - **Liveness:** unresolved or conditional cases refund both principals after a fixed timeout.
@@ -118,7 +123,7 @@ artifact-court/
 
 ### Views
 
-`get_case`, `get_artifact`, `get_dependency`, `list_case_ids`, `get_policy`
+`get_case`, `get_artifact`, `get_dependency`, `get_evidence`, `list_case_ids`, `get_policy`
 
 ## Local verification
 
@@ -131,7 +136,7 @@ python -m py_compile contracts/artifact_court.py
 python -m genvm_linter.cli check contracts/artifact_court.py
 ```
 
-Current regression coverage includes full-commit binding, graph determinism, balanced evidence budgets, matched bonds, winner-controlled settlement, consumer remediation authority, timeout refunds, frontend reads/writes, receipt confirmation, and GenLayer consensus primitives.
+Current regression coverage includes full-commit binding, graph determinism, content-bound evidence digests, evidence digest mismatch detection, balanced evidence budgets, matched bonds, winner-controlled settlement, consumer remediation authority, remediation requirement reproduction, reproduction mismatch detection, timeout refunds, frontend reads/writes, receipt confirmation, and GenLayer consensus primitives.
 
 ## Local development
 
@@ -149,9 +154,9 @@ Set `VITE_ARTIFACT_COURT_ADDRESS` to the deployed Bradbury contract. No private 
 3. Add at least one artifact URL containing that exact commit and a `sha256:` digest.
 4. From a consumer wallet, register a public compatibility constraint.
 5. Lock the graph, then open a challenge from a different wallet with the displayed matching bond.
-6. Submit public evidence from both bonded wallets.
-7. After the evidence deadline, call adjudication and inspect the accepted transaction plus stored verdict.
-8. For a conditional verdict, verify that only the affected consumer wallet can approve remediation.
+6. Submit public evidence from both bonded wallets, each with a SHA-256 content digest.
+7. After the evidence deadline, call adjudication and inspect the accepted transaction plus stored verdict. Validators verify every evidence item's content-bound digest.
+8. For a conditional verdict, verify that only the affected consumer wallet can approve remediation. Validators will reproduce the exact remediation requirement from content-bound evidence before settlement.
 9. For unresolved evidence, retry before timeout or refund both principals after timeout.
 
 See [docs/JUDGE-WALKTHROUGH.md](docs/JUDGE-WALKTHROUGH.md) for code-level evidence.

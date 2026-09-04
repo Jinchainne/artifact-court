@@ -9,6 +9,11 @@ export type CaseState =
   | "REFUNDED"
   | "CANCELLED";
 
+export interface EvidenceItem {
+  url: string;
+  declared_digest: string;
+}
+
 export interface ReleaseCase {
   id: number | string;
   maintainer: string;
@@ -21,8 +26,8 @@ export interface ReleaseCase {
   challenger_bond: number | string;
   artifact_count: number | string;
   dependency_count: number | string;
-  maintainer_evidence: string[];
-  challenger_evidence: string[];
+  maintainer_evidence: EvidenceItem[];
+  challenger_evidence: EvidenceItem[];
   state: CaseState;
   graph_digest: string;
   verdict: string;
@@ -36,4 +41,3 @@ export interface ReleaseCase {
   resolution_timeout: number | string;
   settled: boolean;
 }
-

@@ -39,6 +39,11 @@ function dateTime(value: number | string) {
   });
 }
 
+interface EvidencePair {
+  url: string;
+  digest: string;
+}
+
 function App() {
   const [view, setView] = useState<View>("docket");
   const [account, setAccount] = useState<`0x${string}` | "">("");
@@ -58,7 +63,7 @@ function App() {
   });
   const [artifact, setArtifact] = useState({ kind: "SOURCE", url: "", digest: "sha256:" });
   const [consumer, setConsumer] = useState({ id: "", url: "" });
-  const [evidence, setEvidence] = useState("");
+  const [evidencePairs, setEvidencePairs] = useState<EvidencePair[]>([{ url: "", digest: "sha256:" }]);
   const [remediation, setRemediation] = useState("");
 
   const selected = cases.find((item) => Number(item.id) === selectedId) ?? null;
@@ -153,6 +158,20 @@ function App() {
     void transact(label, (client) => action(client, selectedId));
   };
 
+  function addEvidenceRow() {
+    setEvidencePairs([...evidencePairs, { url: "", digest: "sha256:" }]);
+  }
+
+  function removeEvidenceRow(index: number) {
+    setEvidencePairs(evidencePairs.filter((_, i) => i !== index));
+  }
+
+  function updateEvidenceRow(index: number, field: "url" | "digest", value: string) {
+    const updated = [...evidencePairs];
+    updated[index] = { ...updated[index], [field]: value };
+    setEvidencePairs(updated);
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -187,7 +206,8 @@ function App() {
                 <h1>Ship software with<br /><em>evidence under oath.</em></h1>
                 <p>
                   ArtifactCourt locks release artifacts and consumer constraints, then lets GenLayer validators
-                  re-fetch both sides before a bonded verdict controls activation.
+                  re-fetch both sides before a bonded verdict controls activation. Every evidence item is
+                  content-bound with a SHA-256 digest for tamper-evident adjudication.
                 </p>
                 <div className="hero-actions">
                   <button className="primary" onClick={() => setView("submit")}>Open a release case</button>
@@ -289,7 +309,7 @@ function App() {
                 <article className="ledger-block verdict-block">
                   <div className="block-title"><span>02</span><h2>Consensus verdict</h2></div>
                   <strong>{selected.verdict || "AWAITING ADJUDICATION"}</strong>
-                  <p>{selected.reasoning || "Validators will independently re-fetch each reserved evidence partition after the evidence window closes."}</p>
+                  <p>{selected.reasoning || "Validators will independently re-fetch each reserved evidence partition and verify content-bound digests after the evidence window closes."}</p>
                   <p className="binding-status">{policyBoundToExecution ? "Verdict bound to terminal execution and settled accounting." : "No terminal execution is permitted before the contract reaches a final route."}</p>
                   {selected.remediation_required && <div className="remedy"><small>Consumer-owned remediation</small>{selected.remediation_required}</div>}
                 </article>
@@ -323,9 +343,23 @@ function App() {
                 )}
 
                 {(selected.state === "CHALLENGED" || selected.state === "UNRESOLVED") && (
-                  <form onSubmit={(e) => { e.preventDefault(); clientAction("Submit evidence", (client, id) => writes.submitEvidence(client, id, evidence.split("\n").map((url) => url.trim()).filter(Boolean))); }}>
-                    <h3>Your reserved evidence</h3><p>One public HTTPS URL per line. Each party keeps a separate 7,000-character validator budget.</p>
-                    <textarea required value={evidence} onChange={(e) => setEvidence(e.target.value)} placeholder="https://..." />
+                  <form onSubmit={(e) => {
+                    e.preventDefault();
+                    const validPairs = evidencePairs.filter((p) => p.url.trim() && p.digest.trim() && p.digest !== "sha256:");
+                    const urls = validPairs.map((p) => p.url.trim());
+                    const digests = validPairs.map((p) => p.digest.trim());
+                    void transact("Submit evidence", (client) => writes.submitEvidence(client, selectedId!, urls, digests));
+                  }}>
+                    <h3>Content-bound evidence</h3>
+                    <p>Each URL must carry a SHA-256 digest binding it to immutable content. Validators verify fetched bytes match every declared digest.</p>
+                    {evidencePairs.map((pair, index) => (
+                      <div key={index} className="evidence-pair-row">
+                        <input required value={pair.url} onChange={(e) => updateEvidenceRow(index, "url", e.target.value)} placeholder="https://..." />
+                        <input required value={pair.digest} onChange={(e) => updateEvidenceRow(index, "digest", e.target.value)} placeholder="sha256:..." />
+                        {evidencePairs.length > 1 && <button type="button" className="subtle" onClick={() => removeEvidenceRow(index)}>Remove</button>}
+                      </div>
+                    ))}
+                    {evidencePairs.length < 5 && <button type="button" className="subtle" onClick={addEvidenceRow}>+ Add evidence item</button>}
                     <button disabled={Boolean(busy)}>Replace my evidence set</button>
                     <button type="button" className="subtle" onClick={() => clientAction("Adjudicate", (client, id) => writes.adjudicate(client, id))}>Run consensus after deadline</button>
                   </form>
@@ -333,7 +367,10 @@ function App() {
 
                 {selected.state === "CONDITIONAL" && (
                   <form onSubmit={(e) => { e.preventDefault(); clientAction("Submit remediation", (client, id) => writes.submitRemediation(client, id, remediation)); }}>
-                    <h3>Conditional remediation</h3><p>{selected.remediation_required}</p><input required value={remediation} onChange={(e) => setRemediation(e.target.value)} placeholder="Public remediation evidence URL" />
+                    <h3>Conditional remediation</h3>
+                    <p>{selected.remediation_required}</p>
+                    <p className="muted">Validators will reproduce this exact requirement from content-bound evidence before settlement can proceed.</p>
+                    <input required value={remediation} onChange={(e) => setRemediation(e.target.value)} placeholder="Public remediation evidence URL" />
                     <button disabled={Boolean(busy)}>Submit remediation</button>
                     <button type="button" className="subtle" onClick={() => clientAction("Approve remediation", (client, id) => writes.approveRemediation(client, id))}>Affected consumer approves</button>
                     <button type="button" className="subtle" onClick={() => clientAction("Verify remediation", (client, id) => writes.verifyRemediation(client, id))}>Validator re-check</button>
@@ -349,13 +386,15 @@ function App() {
 
         {view === "workflow" && (
           <section className="workflow-page">
-            <span className="eyebrow">Protocol map</span><h1>One docket, five safeguards</h1><p className="lead">ArtifactCourt combines immutable provenance, dependency-aware compatibility and matched-bond settlement without trusting a pre-fetched evidence packet.</p>
+            <span className="eyebrow">Protocol map</span>
+            <h1>One docket, five safeguards</h1>
+            <p className="lead">ArtifactCourt combines immutable provenance, content-bound evidence, dependency-aware compatibility and matched-bond settlement without trusting a pre-fetched evidence packet.</p>
             <div className="workflow-grid">
               {[
                 ["01", "Bind", "A full Git commit, artifact digests and consumer-owned constraints form a canonical graph digest."],
                 ["02", "Challenge", "A challenger must match the maintainer bond exactly, creating symmetric exposure."],
-                ["03", "Re-fetch", "Validators independently render each side and preserve separate evidence budgets."],
-                ["04", "Remediate", "Conditional verdicts name one affected consumer whose wallet controls approval."],
+                ["03", "Re-fetch", "Validators independently render each side, verify content-bound evidence digests, and preserve separate evidence budgets."],
+                ["04", "Remediate", "Conditional verdicts name one affected consumer whose wallet controls approval. Validators reproduce the exact remediation requirement before settlement."],
                 ["05", "Settle", "Activation, rejection or fail-closed timeout directly controls bond delivery."],
               ].map(([number, title, copy]) => <article key={number}><span>{number}</span><h2>{title}</h2><p>{copy}</p></article>)}
             </div>
@@ -363,7 +402,7 @@ function App() {
           </section>
         )}
       </main>
-      <footer><span>ArtifactCourt / Bradbury Testnet</span><span>Public evidence. Independent validators. Deterministic consequences.</span></footer>
+      <footer><span>ArtifactCourt / Bradbury Testnet</span><span>Content-bound evidence. Independent validators. Deterministic consequences.</span></footer>
     </div>
   );
 }
