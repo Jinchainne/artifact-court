@@ -73,12 +73,12 @@ export const writes = {
     write(client, "cancel_draft", [id]),
   openChallenge: (client: any, id: number, value: bigint) =>
     write(client, "open_challenge", [id], value),
-  submitEvidence: (client: any, id: number, urls: string[]) =>
-    write(client, "submit_evidence", [id, urls]),
+  submitEvidence: (client: any, id: number, urls: string[], digests: string[]) =>
+    write(client, "submit_evidence", [id, urls, digests]),
   adjudicate: (client: any, id: number) =>
     write(client, "adjudicate", [id]),
-  submitRemediation: (client: any, id: number, url: string) =>
-    write(client, "submit_remediation", [id, url]),
+  submitRemediation: (client: any, id: number, url: string, digest: string) =>
+    write(client, "submit_remediation", [id, url, digest]),
   approveRemediation: (client: any, id: number) =>
     write(client, "approve_remediation", [id]),
   verifyRemediation: (client: any, id: number) =>

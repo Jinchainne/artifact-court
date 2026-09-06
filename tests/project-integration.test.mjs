@@ -8,13 +8,15 @@ const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
 
 test("contract uses consequential non-deterministic consensus", () => {
   for (const signal of [
-    "gl.nondet.web.render",
     "gl.nondet.web.get",
     "gl.nondet.exec_prompt",
     "gl.vm.run_nondet_unsafe",
     "validator_fn",
     "_apply_verdict",
     "_settle",
+    "_fetch_anchored",
+    'leader.get("remediation") == validator.get("remediation")',
+    "_remediation_consensus_matches",
   ]) assert.ok(contract.includes(signal), signal);
 });
 
@@ -30,6 +32,8 @@ test("frontend reads, writes, and waits for accepted receipts", () => {
   ]) assert.ok(client.includes(signal), signal);
   assert.ok(app.includes("writes.openChallenge"));
   assert.ok(app.includes("writes.submitEvidence"));
+  assert.ok(app.includes("immutable GitHub blob/raw URLs"));
+  assert.ok(app.includes("remediation.digest"));
 });
 
 test("security invariants remain visible in source", () => {
@@ -39,4 +43,7 @@ test("security invariants remain visible in source", () => {
   assert.ok(contract.includes("Maintainer cannot own a consumer compatibility constraint"));
   assert.ok(contract.includes('"outcome": "UNRESOLVED"'));
   assert.ok(contract.includes("Resolution timed out; use the refund path"));
+  assert.ok(contract.includes("Semantic evidence must use an immutable GitHub blob or raw URL"));
+  assert.ok(contract.includes("does not match its locked SHA-256 digest"));
+  assert.ok(contract.includes("Validator did not reproduce the exact remediation requirement"));
 });

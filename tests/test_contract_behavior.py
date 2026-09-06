@@ -103,18 +103,31 @@ class ArtifactCourtBehaviorTest(unittest.TestCase):
                 types.SimpleNamespace(
                     consumer_id="wallet-client",
                     owner=self.consumer,
-                    constraint_url="https://consumer.example/constraint",
+                    constraint_url="https://github.com/consumer/wallet/blob/" + "e" * 40 + "/constraint.md",
+                    constraint_digest="sha256:" + "f" * 64,
                 )
             ],
-            "maintainer_evidence": ["https://maintainer.example/release"],
-            "challenger_evidence": ["https://challenger.example/regression"],
+            "maintainer_evidence": [
+                types.SimpleNamespace(
+                    immutable_url="https://github.com/maintainer/release/blob/" + "1" * 40 + "/evidence.md",
+                    declared_digest="sha256:" + "2" * 64,
+                )
+            ],
+            "challenger_evidence": [
+                types.SimpleNamespace(
+                    immutable_url="https://github.com/challenger/review/blob/" + "3" * 40 + "/evidence.md",
+                    declared_digest="sha256:" + "4" * 64,
+                )
+            ],
             "state": self.module.CaseState.CHALLENGED,
             "graph_digest": "sha256:" + "c" * 64,
             "verdict": "",
             "reasoning": "",
             "affected_consumer_id": "",
             "remediation_required": "",
+            "remediation_requirement_digest": "",
             "remediation_url": "",
+            "remediation_digest": "",
             "remediation_approved": False,
             "challenge_deadline": 100,
             "evidence_deadline": 200,
@@ -143,7 +156,8 @@ class ArtifactCourtBehaviorTest(unittest.TestCase):
         second_dependency = types.SimpleNamespace(
             consumer_id="api-indexer",
             owner="0x" + "4" * 40,
-            constraint_url="https://indexer.example/constraint",
+            constraint_url="https://github.com/indexer/spec/blob/" + "5" * 40 + "/constraint.md",
+            constraint_digest="sha256:" + "6" * 64,
         )
         first.dependencies = [first.dependencies[0], second_dependency]
         second = self.case()
@@ -151,20 +165,43 @@ class ArtifactCourtBehaviorTest(unittest.TestCase):
         self.assertEqual(self.module._canonical_graph(first), self.module._canonical_graph(second))
 
     def test_each_party_keeps_an_independent_evidence_budget(self):
-        bodies = {
-            "https://maintainer.example/release": "M" * 20_000,
-            "https://challenger.example/regression": "C" * 20_000,
-        }
-        self.module.gl.nondet.web.render = lambda url, mode="text": bodies[url]
-        maintainer_packet, maintainer_available = self.contract._fetch_urls(
-            "MAINTAINER", ["https://maintainer.example/release"], self.module.SIDE_EVIDENCE_BUDGET
+        maintainer_body = b"M" * 20_000
+        challenger_body = b"C" * 20_000
+        maintainer = self.case().maintainer_evidence
+        challenger = self.case().challenger_evidence
+        maintainer[0].declared_digest = "sha256:" + __import__("hashlib").sha256(maintainer_body).hexdigest()
+        challenger[0].declared_digest = "sha256:" + __import__("hashlib").sha256(challenger_body).hexdigest()
+        self.module.gl.nondet.web.get = lambda url: types.SimpleNamespace(
+            status=200,
+            body=maintainer_body if "maintainer" in url else challenger_body,
         )
-        challenger_packet, challenger_available = self.contract._fetch_urls(
-            "CHALLENGER", ["https://challenger.example/regression"], self.module.SIDE_EVIDENCE_BUDGET
+        maintainer_packet, maintainer_available, maintainer_match = self.contract._fetch_evidence(
+            "MAINTAINER", maintainer, self.module.SIDE_EVIDENCE_BUDGET
+        )
+        challenger_packet, challenger_available, challenger_match = self.contract._fetch_evidence(
+            "CHALLENGER", challenger, self.module.SIDE_EVIDENCE_BUDGET
         )
         self.assertTrue(maintainer_available and challenger_available)
+        self.assertTrue(maintainer_match and challenger_match)
         self.assertEqual(maintainer_packet.split(":\n", 1)[1].count("M"), 7000)
         self.assertEqual(challenger_packet.split(":\n", 1)[1].count("C"), 7000)
+
+    def test_semantic_evidence_is_immutable_and_hash_bound(self):
+        with self.assertRaisesRegex(RuntimeError, "immutable GitHub"):
+            self.module._immutable_content_url(
+                "https://github.com/maintainer/release/blob/main/evidence.md"
+            )
+        evidence = self.case().maintainer_evidence
+        body = b"Immutable semantic evidence body."
+        self.module.gl.nondet.web.get = lambda _url: types.SimpleNamespace(status=200, body=body)
+        evidence[0].declared_digest = "sha256:" + __import__("hashlib").sha256(body).hexdigest()
+        _, available, matches = self.contract._fetch_evidence("MAINTAINER", evidence, 7000)
+        self.assertTrue(available)
+        self.assertTrue(matches)
+        evidence[0].declared_digest = "sha256:" + "0" * 64
+        _, available, matches = self.contract._fetch_evidence("MAINTAINER", evidence, 7000)
+        self.assertTrue(available)
+        self.assertFalse(matches)
 
     def test_validators_fetch_artifact_bytes_and_compare_locked_digest(self):
         body = b"export const apiVersion = '2.4';\n"
@@ -233,7 +270,7 @@ class ArtifactCourtBehaviorTest(unittest.TestCase):
         )
         self.assertEqual(case.state, self.module.CaseState.CONDITIONAL)
         self.assertFalse(case.settled)
-        case.remediation_url = "https://maintainer.example/adapter"
+        case.remediation_url = "https://github.com/maintainer/release/blob/" + "1" * 40 + "/adapter.md"
         self.module.gl.message.sender_address = self.challenger
         with self.assertRaisesRegex(RuntimeError, "affected consumer owner"):
             self.contract.approve_remediation(1)
@@ -246,25 +283,116 @@ class ArtifactCourtBehaviorTest(unittest.TestCase):
         self.contract.cases[1] = case
         self.module.gl.message.sender_address = self.maintainer
         with self.assertRaisesRegex(RuntimeError, "cannot own"):
-            self.contract.register_consumer(1, "self-client", "https://consumer.example/constraint")
+            self.contract.register_consumer(
+                1,
+                "self-client",
+                "https://github.com/consumer/wallet/blob/" + "e" * 40 + "/constraint.md",
+                "sha256:" + "f" * 64,
+            )
 
     def test_remediation_fetch_failure_keeps_bonds_and_conditional_state(self):
         case = self.case(
             state=self.module.CaseState.CONDITIONAL,
             affected_consumer_id="wallet-client",
             remediation_required="Publish a compatibility adapter for the affected consumer.",
-            remediation_url="https://maintainer.example/adapter",
+            remediation_requirement_digest="sha256:" + "7" * 64,
+            remediation_url="https://github.com/maintainer/release/blob/" + "1" * 40 + "/adapter.md",
+            remediation_digest="sha256:" + "8" * 64,
             remediation_approved=True,
         )
         self.contract.cases[1] = case
         self.module._now = lambda: 250
-        self.module.gl.nondet.web.render = lambda _url, mode="text": (_ for _ in ()).throw(RuntimeError("offline"))
+        self.module.gl.nondet.web.get = lambda _url: (_ for _ in ()).throw(RuntimeError("offline"))
         transfers = []
         self.contract._transfer = lambda recipient, amount: transfers.append((recipient, amount))
 
         outcome = self.contract.verify_remediation(1)
 
         self.assertEqual(outcome, "UNRESOLVED")
+        self.assertEqual(case.state, self.module.CaseState.CONDITIONAL)
+        self.assertFalse(case.settled)
+        self.assertEqual(transfers, [])
+
+    def test_exact_remediation_requirement_is_part_of_validator_agreement(self):
+        digest = "sha256:" + "9" * 64
+        leader = {
+            "verdict": "CONDITIONAL",
+            "affected_consumer_id": "wallet-client",
+            "reasoning": "The adapter is required before this consumer can migrate safely.",
+            "remediation": "Publish adapter version 2.1 with the documented legacy route mapping.",
+        }
+        validator = dict(leader)
+        self.assertTrue(self.contract._adjudication_consensus_matches(leader, validator))
+        validator["remediation"] = "Publish a different adapter requirement."
+        self.assertFalse(self.contract._adjudication_consensus_matches(leader, validator))
+        remediation_leader = {"outcome": "SATISFIED", "requirement_digest": digest}
+        remediation_validator = dict(remediation_leader)
+        self.assertTrue(
+            self.contract._remediation_consensus_matches(
+                remediation_leader, remediation_validator, digest
+            )
+        )
+        remediation_validator["requirement_digest"] = "sha256:" + "0" * 64
+        self.assertFalse(
+            self.contract._remediation_consensus_matches(
+                remediation_leader, remediation_validator, digest
+            )
+        )
+
+    def test_mismatched_remediation_requirement_cannot_trigger_settlement(self):
+        import hashlib
+
+        requirement = "Publish adapter version 2.1 with the documented legacy route mapping."
+        requirement_digest = "sha256:" + hashlib.sha256(requirement.encode("utf-8")).hexdigest()
+        remediation_body = b"Adapter 2.1 implements every documented legacy route mapping."
+        constraint_body = b"Activation requires the documented legacy route mapping to remain available."
+        case = self.case(
+            state=self.module.CaseState.CONDITIONAL,
+            affected_consumer_id="wallet-client",
+            remediation_required=requirement,
+            remediation_requirement_digest=requirement_digest,
+            remediation_url="https://github.com/maintainer/release/blob/" + "1" * 40 + "/adapter.md",
+            remediation_digest="sha256:" + hashlib.sha256(remediation_body).hexdigest(),
+            remediation_approved=True,
+        )
+        case.dependencies[0].constraint_digest = (
+            "sha256:" + hashlib.sha256(constraint_body).hexdigest()
+        )
+        self.contract.cases[1] = case
+        self.module._now = lambda: 250
+        self.module.gl.nondet.web.get = lambda url: types.SimpleNamespace(
+            status=200,
+            body=remediation_body if "adapter.md" in url else constraint_body,
+        )
+        responses = iter(
+            [
+                {
+                    "outcome": "SATISFIED",
+                    "requirement_digest": requirement_digest,
+                    "reasoning": "The immutable remediation satisfies the exact stored requirement.",
+                },
+                {
+                    "outcome": "SATISFIED",
+                    "requirement_digest": "sha256:" + "0" * 64,
+                    "reasoning": "This validator evaluated a different remediation requirement.",
+                },
+            ]
+        )
+        self.module.gl.nondet.exec_prompt = lambda _prompt, response_format="json": next(responses)
+
+        def require_validator_agreement(leader_fn, validator_fn):
+            leader_result = self.module.gl.vm.Return()
+            leader_result.calldata = leader_fn()
+            if not validator_fn(leader_result):
+                raise RuntimeError("validator disagreement")
+            return leader_result.calldata
+
+        self.module.gl.vm.run_nondet_unsafe = require_validator_agreement
+        transfers = []
+        self.contract._transfer = lambda recipient, amount: transfers.append((recipient, amount))
+
+        with self.assertRaisesRegex(RuntimeError, "exact remediation requirement"):
+            self.contract.verify_remediation(1)
         self.assertEqual(case.state, self.module.CaseState.CONDITIONAL)
         self.assertFalse(case.settled)
         self.assertEqual(transfers, [])

@@ -57,9 +57,9 @@ function App() {
     bond: "0.01",
   });
   const [artifact, setArtifact] = useState({ kind: "SOURCE", url: "", digest: "sha256:" });
-  const [consumer, setConsumer] = useState({ id: "", url: "" });
-  const [evidence, setEvidence] = useState("");
-  const [remediation, setRemediation] = useState("");
+  const [consumer, setConsumer] = useState({ id: "", url: "", digest: "sha256:" });
+  const [evidence, setEvidence] = useState({ urls: "", digests: "" });
+  const [remediation, setRemediation] = useState({ url: "", digest: "sha256:" });
 
   const selected = cases.find((item) => Number(item.id) === selectedId) ?? null;
   const policyBoundToExecution = Boolean(
@@ -282,8 +282,11 @@ function App() {
                   {artifacts.map((item, index) => <a className="evidence-item" key={index} href={String(item.immutable_url)} target="_blank" rel="noreferrer"><b>{String(item.kind)}</b><span>{short(String(item.declared_digest), 12)}</span></a>)}
                   {!artifacts.length && <p className="muted">No release artifacts registered.</p>}
                   <h3>Consumer constraints</h3>
-                  {dependencies.map((item, index) => <a className="evidence-item" key={index} href={String(item.constraint_url)} target="_blank" rel="noreferrer"><b>{String(item.consumer_id)}</b><span>owned by {short(String(item.owner), 5)}</span></a>)}
+                  {dependencies.map((item, index) => <a className="evidence-item" key={index} href={String(item.constraint_url)} target="_blank" rel="noreferrer"><b>{String(item.consumer_id)}</b><span>{short(String(item.constraint_digest), 12)}</span></a>)}
                   {!dependencies.length && <p className="muted">No consumer constraints registered.</p>}
+                  <h3>Anchored party evidence</h3>
+                  {[...selected.maintainer_evidence, ...selected.challenger_evidence].map((item, index) => <a className="evidence-item" key={index} href={item.immutable_url} target="_blank" rel="noreferrer"><b>{index < selected.maintainer_evidence.length ? "MAINTAINER" : "CHALLENGER"}</b><span>{short(item.declared_digest, 12)}</span></a>)}
+                  {!selected.maintainer_evidence.length && !selected.challenger_evidence.length && <p className="muted">No anchored party evidence submitted.</p>}
                 </article>
 
                 <article className="ledger-block verdict-block">
@@ -291,7 +294,7 @@ function App() {
                   <strong>{selected.verdict || "AWAITING ADJUDICATION"}</strong>
                   <p>{selected.reasoning || "Validators will independently re-fetch each reserved evidence partition after the evidence window closes."}</p>
                   <p className="binding-status">{policyBoundToExecution ? "Verdict bound to terminal execution and settled accounting." : "No terminal execution is permitted before the contract reaches a final route."}</p>
-                  {selected.remediation_required && <div className="remedy"><small>Consumer-owned remediation</small>{selected.remediation_required}</div>}
+                  {selected.remediation_required && <div className="remedy"><small>Consensus-exact remediation · {short(selected.remediation_requirement_digest, 12)}</small>{selected.remediation_required}</div>}
                 </article>
               </div>
 
@@ -308,10 +311,11 @@ function App() {
                       <input required value={artifact.digest} onChange={(e) => setArtifact({ ...artifact, digest: e.target.value })} placeholder="sha256:..." />
                       <button disabled={Boolean(busy)}>Register artifact</button>
                     </form>
-                    <form onSubmit={(e) => { e.preventDefault(); clientAction("Register consumer", (client, id) => writes.registerConsumer(client, [id, consumer.id, consumer.url])); }}>
+                    <form onSubmit={(e) => { e.preventDefault(); clientAction("Register consumer", (client, id) => writes.registerConsumer(client, [id, consumer.id, consumer.url, consumer.digest])); }}>
                       <h3>Register as consumer</h3>
                       <input required value={consumer.id} onChange={(e) => setConsumer({ ...consumer, id: e.target.value })} placeholder="consumer-id" />
-                      <input required value={consumer.url} onChange={(e) => setConsumer({ ...consumer, url: e.target.value })} placeholder="Public constraint URL" />
+                      <input required value={consumer.url} onChange={(e) => setConsumer({ ...consumer, url: e.target.value })} placeholder="Immutable GitHub constraint URL" />
+                      <input required value={consumer.digest} onChange={(e) => setConsumer({ ...consumer, digest: e.target.value })} placeholder="sha256: constraint content digest" />
                       <button disabled={Boolean(busy)}>Own this constraint</button>
                     </form>
                     <div className="button-pair"><button onClick={() => clientAction("Lock release", (client, id) => writes.lockRelease(client, id))}>Lock evidence graph</button><button className="danger" onClick={() => clientAction("Cancel draft", (client, id) => writes.cancelDraft(client, id))}>Cancel & refund</button></div>
@@ -323,17 +327,19 @@ function App() {
                 )}
 
                 {(selected.state === "CHALLENGED" || selected.state === "UNRESOLVED") && (
-                  <form onSubmit={(e) => { e.preventDefault(); clientAction("Submit evidence", (client, id) => writes.submitEvidence(client, id, evidence.split("\n").map((url) => url.trim()).filter(Boolean))); }}>
-                    <h3>Your reserved evidence</h3><p>One public HTTPS URL per line. Each party keeps a separate 7,000-character validator budget.</p>
-                    <textarea required value={evidence} onChange={(e) => setEvidence(e.target.value)} placeholder="https://..." />
+                  <form onSubmit={(e) => { e.preventDefault(); clientAction("Submit evidence", (client, id) => writes.submitEvidence(client, id, evidence.urls.split("\n").map((value) => value.trim()).filter(Boolean), evidence.digests.split("\n").map((value) => value.trim()).filter(Boolean))); }}>
+                    <h3>Your anchored evidence</h3><p>Use immutable GitHub blob/raw URLs with one matching SHA-256 digest per line. Each party keeps a separate 7,000-character validator budget.</p>
+                    <textarea required value={evidence.urls} onChange={(e) => setEvidence({ ...evidence, urls: e.target.value })} placeholder="Immutable URL 1&#10;Immutable URL 2" />
+                    <textarea required value={evidence.digests} onChange={(e) => setEvidence({ ...evidence, digests: e.target.value })} placeholder="sha256: digest 1&#10;sha256: digest 2" />
                     <button disabled={Boolean(busy)}>Replace my evidence set</button>
                     <button type="button" className="subtle" onClick={() => clientAction("Adjudicate", (client, id) => writes.adjudicate(client, id))}>Run consensus after deadline</button>
                   </form>
                 )}
 
                 {selected.state === "CONDITIONAL" && (
-                  <form onSubmit={(e) => { e.preventDefault(); clientAction("Submit remediation", (client, id) => writes.submitRemediation(client, id, remediation)); }}>
-                    <h3>Conditional remediation</h3><p>{selected.remediation_required}</p><input required value={remediation} onChange={(e) => setRemediation(e.target.value)} placeholder="Public remediation evidence URL" />
+                  <form onSubmit={(e) => { e.preventDefault(); clientAction("Submit remediation", (client, id) => writes.submitRemediation(client, id, remediation.url, remediation.digest)); }}>
+                    <h3>Conditional remediation</h3><p>{selected.remediation_required}</p><input required value={remediation.url} onChange={(e) => setRemediation({ ...remediation, url: e.target.value })} placeholder="Immutable GitHub remediation URL" />
+                    <input required value={remediation.digest} onChange={(e) => setRemediation({ ...remediation, digest: e.target.value })} placeholder="sha256: remediation content digest" />
                     <button disabled={Boolean(busy)}>Submit remediation</button>
                     <button type="button" className="subtle" onClick={() => clientAction("Approve remediation", (client, id) => writes.approveRemediation(client, id))}>Affected consumer approves</button>
                     <button type="button" className="subtle" onClick={() => clientAction("Verify remediation", (client, id) => writes.verifyRemediation(client, id))}>Validator re-check</button>

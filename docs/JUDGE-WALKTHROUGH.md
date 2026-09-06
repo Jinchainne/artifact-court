@@ -4,9 +4,11 @@
 
 Open `contracts/artifact_court.py` and inspect `_adjudicate` and `verify_remediation`.
 
-- `gl.nondet.web.render` fetches changing public evidence.
+- `gl.nondet.web.get` fetches immutable GitHub raw bytes for artifacts, party evidence, constraints, and remediation.
+- `_fetch_anchored` verifies each observed SHA-256 against its on-chain declaration before text reaches a prompt.
 - `gl.nondet.exec_prompt` classifies compatibility and remediation satisfaction.
 - `gl.vm.run_nondet_unsafe` makes each validator run the assessment independently.
+- `_adjudication_consensus_matches` requires the exact remediation text; `_remediation_consensus_matches` requires the stored requirement digest.
 - `_apply_verdict` and `_settle` bind consensus to activation, rejection, and bond delivery.
 
 The non-deterministic result is therefore consequential, not educational text or a detached report.
@@ -27,9 +29,10 @@ Run `npm test` for behavioral tests covering:
 1. full-commit provenance;
 2. deterministic graph hashing;
 3. independent evidence budgets;
-4. exact bond matching;
-5. compatible/incompatible payout routes;
-6. consumer-owned remediation approval;
-7. unresolved timeout refunds;
-8. frontend read/write and receipt bindings.
-
+4. immutable semantic URLs and byte-level digest binding;
+5. exact bond matching;
+6. compatible/incompatible payout routes;
+7. exact remediation requirement consensus;
+8. consumer-owned remediation approval;
+9. unresolved timeout refunds;
+10. frontend read/write and receipt bindings.

@@ -6,7 +6,7 @@ ArtifactCourt - Consensus-Backed Software Release Adjudication
 
 ## Notes / Description
 
-ArtifactCourt is a complete GenLayer application for adjudicating software release integrity and downstream compatibility. Maintainers bind a full Git commit, immutable artifacts, SHA-256 declarations, and a test GEN bond. Independent consumer wallets own compatibility constraints, while challengers must match the maintainer bond and receive a reserved evidence budget. Validators fetch artifact bytes to verify locked digests, then independently re-fetch both parties and every constraint before consensus controls activation and settlement. Conditional fixes require affected-consumer approval and validator re-check. Network failures remain unresolved without awarding either side; terminal timeouts refund both principals. The React app executes all contract reads/writes and waits for accepted receipts.
+ArtifactCourt is a complete GenLayer application for adjudicating software release integrity and downstream compatibility. Maintainers bind a full Git commit, immutable artifacts, SHA-256 declarations, and a test GEN bond. Consumer constraints, both parties' semantic evidence, and remediation are also pinned to full-commit GitHub content plus SHA-256. Validators fetch and hash exact bytes before prompting. Consensus must reproduce the verdict, affected consumer, and exact remediation requirement; remediation settlement additionally requires the stored requirement digest. Digest or network failures remain unresolved without awarding either side. The React app executes every contract workflow and waits for accepted receipts before refreshing state.
 
 ## Evidence
 

@@ -23,8 +23,11 @@ for (const method of requiredMethods) {
 }
 
 if (!contract.includes("gl.vm.run_nondet_unsafe")) throw new Error("Consensus execution missing");
-if (!contract.includes("gl.nondet.web.render")) throw new Error("Validator web re-fetch missing");
+if (!contract.includes("gl.nondet.web.get")) throw new Error("Validator raw-content re-fetch missing");
+if (!contract.includes("_immutable_content_url")) throw new Error("Immutable semantic evidence policy missing");
+if (!contract.includes("observed == declared_digest")) throw new Error("Semantic content digest verification missing");
+if (!contract.includes('leader.get("remediation") == validator.get("remediation")')) throw new Error("Exact remediation consensus missing");
+if (!contract.includes("_remediation_consensus_matches")) throw new Error("Remediation settlement consensus guard missing");
 if (!client.includes("waitForTransactionReceipt")) throw new Error("Receipt confirmation missing");
 
 console.log("ArtifactCourt verification passed: contract, consensus, settlement, and frontend bindings align.");
-

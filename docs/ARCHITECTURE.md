@@ -18,9 +18,9 @@ The frontend is intentionally untrusted. It formats transactions and presents st
 
 ## Evidence partitions
 
-Maintainer and challenger evidence each receive exactly 7,000 rendered characters. Constraints receive a separate 5,000-character pool distributed across registered consumers. Unused capacity from one party is never transferred to the other. Immutable artifacts are fetched separately as raw bytes and compared against their locked SHA-256 declarations before semantic adjudication begins.
+Maintainer and challenger evidence each receive exactly 7,000 decoded characters. Constraints receive a separate 5,000-character pool distributed across registered consumers. Unused capacity from one party is never transferred to the other. Every semantic entry is a full-commit GitHub blob/raw URL paired with a declared SHA-256 digest. Validators fetch raw bytes, reject unavailable or oversized content, compare observed and declared digests, and only then decode bounded text for adjudication. Immutable release artifacts use the same byte-level verification path.
 
-Validators invoke the same fetch-and-assess function independently. Agreement is required on both `verdict` and `affected_consumer_id`; prose reasoning must also be non-empty and bounded.
+Validators invoke the same fetch-and-assess function independently. Agreement is required on `verdict`, `affected_consumer_id`, and the exact `remediation` string; prose reasoning must also be non-empty and bounded. For a conditional verdict, the contract stores `sha256(remediation requirement)` as a second immutable consensus anchor.
 
 ## Verdict schema
 
@@ -33,7 +33,7 @@ Validators invoke the same fetch-and-assess function independently. Agreement is
 }
 ```
 
-Cross-field validation rejects conditional verdicts without a registered consumer or concrete remediation. Non-conditional verdicts cannot smuggle remediation ownership into state.
+Cross-field validation rejects conditional verdicts without a registered consumer or concrete remediation. Non-conditional verdicts cannot smuggle remediation ownership into state. During remediation verification, every validator must return the stored exact requirement digest with its `SATISFIED` or `FAILED` outcome. A mismatched requirement cannot control settlement.
 
 ## Settlement policy
 
@@ -49,4 +49,4 @@ Bond values are set to zero and the case is marked settled before any external t
 
 ## Liveness and failure
 
-Transport failures, empty public pages, oversized artifacts, contradictory evidence, and insufficient constraint coverage fail closed. They do not create an incompatible verdict and do not reward either party. A remediation fetch failure also preserves `CONDITIONAL` rather than treating unavailable evidence as a failed fix. Adjudication remains retryable until the fixed resolution timeout, after which either bonded party can return both principals.
+Transport failures, digest mismatches, empty content, oversized artifacts, contradictory evidence, and insufficient constraint coverage fail closed. They do not create an incompatible verdict and do not reward either party. A remediation fetch or digest failure also preserves `CONDITIONAL` rather than treating unavailable evidence as a failed fix. Adjudication remains retryable until the fixed resolution timeout, after which either bonded party can return both principals.
