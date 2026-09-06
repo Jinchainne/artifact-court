@@ -12,8 +12,8 @@ ArtifactCourt turns a software release candidate into an auditable on-chain case
 | --- | --- |
 | Application | [https://artifact-court.vercel.app](https://artifact-court.vercel.app) |
 | Network | GenLayer Bradbury testnet |
-| Contract | [`0x2e6b...24D2`](https://explorer-bradbury.genlayer.com/address/0x2e6b043D7A204D9611D30fFeE3eb83E4EAbc24D2) |
-| Deployment transaction | [`0x5887...b2f8`](https://explorer-bradbury.genlayer.com/tx/0x5887dcded30d83c31b53dbff98fb2f564fa139ce4cbb70d517ec6b79fea7b2f8) |
+| Contract | [`0x68D3...F616`](https://explorer-bradbury.genlayer.com/address/0x68D30326B420EA691C25728adbCeC38150f2F616) |
+| Deployment transaction | [`0x9199...be48`](https://explorer-bradbury.genlayer.com/tx/0x919941d71de070402c90eb484c8edc73da399387a2a5dc1f612693c58d6fbe48) |
 | Chain | `testnet-bradbury` |
 
 Bradbury GEN is faucet-issued test currency with no promised monetary value.

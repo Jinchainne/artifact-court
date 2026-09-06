@@ -12,7 +12,7 @@ ArtifactCourt is a complete GenLayer application for adjudicating software relea
 
 - Live app: https://artifact-court.vercel.app
 - GitHub: https://github.com/Jinchainne/artifact-court
-- Contract: https://explorer-bradbury.genlayer.com/address/0x2e6b043D7A204D9611D30fFeE3eb83E4EAbc24D2
-- Deployment transaction: https://explorer-bradbury.genlayer.com/tx/0x5887dcded30d83c31b53dbff98fb2f564fa139ce4cbb70d517ec6b79fea7b2f8
+- Contract: https://explorer-bradbury.genlayer.com/address/0x68D30326B420EA691C25728adbCeC38150f2F616
+- Deployment transaction: https://explorer-bradbury.genlayer.com/tx/0x919941d71de070402c90eb484c8edc73da399387a2a5dc1f612693c58d6fbe48
 - Behavioral tests: https://github.com/Jinchainne/artifact-court/blob/main/tests/test_contract_behavior.py
 - Judge walkthrough: https://github.com/Jinchainne/artifact-court/blob/main/docs/JUDGE-WALKTHROUGH.md

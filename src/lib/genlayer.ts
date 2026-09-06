@@ -5,7 +5,7 @@ export const RPC_URL = "https://rpc-bradbury.genlayer.com";
 export const EXPLORER_URL = "https://explorer-bradbury.genlayer.com";
 export const CONTRACT_ADDRESS =
   (import.meta.env.VITE_ARTIFACT_COURT_ADDRESS as string) ||
-  "0x2e6b043D7A204D9611D30fFeE3eb83E4EAbc24D2";
+  "0x68D30326B420EA691C25728adbCeC38150f2F616";
 
 function address() {
   if (!/^0x[a-fA-F0-9]{40}$/.test(CONTRACT_ADDRESS) || /^0x0{40}$/.test(CONTRACT_ADDRESS)) {
